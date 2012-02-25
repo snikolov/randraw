@@ -1,0 +1,109 @@
+% Load an image to randomly draw
+name = 'attractive.female.jpg';
+
+CREATE = 0;
+IMAGE_FIGURE = 0;
+
+if IMAGE_FIGURE
+  figure
+end
+
+if CREATE
+  I = imread(name);
+
+  % Convert to grayscale
+  if numel(size(I)) == 3
+    I = rgb2gray(I);
+  end
+
+  % Create energy function
+  th = 130;
+  Ith = double(I > th);
+
+  if IMAGE_FIGURE
+    imagesc(Ith);
+    colormap gray
+    pause;
+  end
+
+  Ith = imresize(Ith, 0.4); 
+  Iblr = conv2(conv2(Ith, ones(7,10), 'same'), ones(7, 1), 'same');
+  Iphi = mask2phi(Ith);
+  Iphi = Iphi - min(Iphi(:));
+  I = Iphi + 0.7 * mean(Iphi(:)) * Iblr / mean(Iblr(:));
+  I = I - min(I(:)) + 0.1;
+  save([name, '.mat'], 'I');
+else
+  % Load energy function
+  load([name, '.mat']);
+end
+
+if IMAGE_FIGURE
+  surf(double(imresize(I, 0.5)))
+  pause;
+  imagesc(Iblr);
+  colormap gray
+end
+
+% Brush parameters
+brushRadius = 3;
+sigmaBrush = 0.2 * brushRadius;
+[x y] = meshgrid(-brushRadius:brushRadius);
+brush = exp(-(x.^2 + y.^2)/(2 * sigmaBrush^2));
+
+% Initialize N random walkers
+rand('twister',6657)
+N = 10;
+[r, c] = size(I);
+rwr = randi(r, N, 1);
+rwc = randi(c, N, 1);
+% Proposal distribution parameters.
+sigmaQ = sigmaBrush * 1;
+
+% Time steps.
+T = 5000;
+
+% Drawing buffer.
+D = zeros(size(I));
+
+DRAWING_FIGURE = 1;
+if DRAWING_FIGURE
+  figure
+  imagesc(I)
+  hold on;
+end
+
+for t = 1:T
+  % Draw
+  for ridx = 1:numel(rwr)
+    if rwr(ridx) > brushRadius && rwr(ridx) <= r - brushRadius ...
+	  && rwc(ridx) > brushRadius && rwc(ridx) <= c - ...
+	  brushRadius
+      D(rwr(ridx) - brushRadius:rwr(ridx) + brushRadius, rwc(ridx) ...
+	- brushRadius:rwc(ridx) + brushRadius) = brush + D(rwr(ridx) - brushRadius:rwr(ridx) + brushRadius, rwc(ridx) ...
+	- brushRadius:rwc(ridx) + brushRadius);
+    end
+  end
+  if DRAWING_FIGURE
+    %scatter(rwc, rwr)
+    %imagesc(-D)
+    colormap gray;
+  end
+  % Proposed random step
+  prwr = mod(round(rwr + normrnd(0, sigmaQ, N, 1)) - 1, r) + 1;
+  prwc = mod(round(rwc + normrnd(0, sigmaQ, N, 1)) - 1, c) + 1;
+  for pidx = 1:numel(rwr)
+    new2old = I(prwr(pidx), prwc(pidx)) / I(rwr(pidx), rwc(pidx));
+    
+    if new2old >= 1 || rand < new2old
+      if norm([rwc(pidx), rwr(pidx)] - [prwc(pidx), prwr(pidx)]) < ...
+	    6 * sigmaQ
+	line([rwc(pidx), prwc(pidx)], [rwr(pidx), prwr(pidx)]);
+      end
+      rwr(pidx) = prwr(pidx);
+      rwc(pidx) = prwc(pidx);
+    end
+  end
+  rwc = prwc;
+  rwr = prwr;
+end
